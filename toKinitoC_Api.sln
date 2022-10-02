@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 25.0.1703.5
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "toKinitoC_Api", "toKinitoC_Api.csproj", "{CA838603-700B-453D-BCF2-5F38032971AB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{CA838603-700B-453D-BCF2-5F38032971AB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CA838603-700B-453D-BCF2-5F38032971AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CA838603-700B-453D-BCF2-5F38032971AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CA838603-700B-453D-BCF2-5F38032971AB}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {0A5404A5-A12D-484A-96E1-DFF494814713}
+	EndGlobalSection
+EndGlobal
