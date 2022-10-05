@@ -427,6 +427,10 @@ namespace a2L.FunctionToKinito
 
             List<getallorders> orders = new List<getallorders>();
 
+            if (string.IsNullOrEmpty(productID))
+            {
+                return new OkObjectResult(orders);
+            }
 
             try
             {
