@@ -423,7 +423,7 @@ namespace a2L.FunctionToKinito
         {
             log.LogInformation("C# HTTP trigger function processed a request. Get GetAllSales");
             string productID = req.Query["productid"];
-            log.LogInformation($"username = {productID ?? "null"}");
+            log.LogInformation($"productID = {productID ?? "null"}");
 
             List<getallorders> orders = new List<getallorders>();
 
