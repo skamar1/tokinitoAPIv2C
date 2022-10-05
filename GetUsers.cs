@@ -17,7 +17,7 @@ namespace a2L.FunctionToKinito
     {
         [FunctionName("GetUsers")]
         public static async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "getusers/{id?}")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "getusers/{id?}")] HttpRequest req,
             ILogger log, int? id)
         {
             log.LogInformation("C# HTTP trigger function processed a request. Get Users");
@@ -116,11 +116,18 @@ namespace a2L.FunctionToKinito
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "serialexist")] HttpRequest req, ILogger log)
         {
             log.LogInformation("C# HTTP trigger function processed a request. Serial Exist?");
+            string isSale = req.Query["issale"];
+            log.LogInformation($"isSale = {isSale ?? "false"}");
 
             string serials = req.Query["serials"];
-            log.LogInformation($"username = {serials ?? "null"}");
+            log.LogInformation($"serials = {serials ?? "null"}");
 
             List<serialExist> serials1 = new List<serialExist>();
+
+            if (string.IsNullOrEmpty(serials)) //αν δεν υπάρχουν σειριακά τότε επέστρεψε αδειο 
+            {
+                return new OkObjectResult(serials1);
+            }
 
             var query = $"select src.serial from (values {serials}) as src(serial) WHERE EXISTS (select 1 from transactions where transactions.serial = src.serial)";
             log.LogInformation($"query = '{query}'");
@@ -135,26 +142,30 @@ namespace a2L.FunctionToKinito
                     {
                         string tempSerial = reader["serial"].ToString();
                         string result = "";
-                        var query1 = $"Select CONVERT(varchar,transactiondate,103) parastDate,ArParast from Transactions where invType = 3 and serial = '{tempSerial}'";
-                        using (SqlConnection connection1 = new SqlConnection(Environment.GetEnvironmentVariable("SqlConnectionString")))
+                        if (!string.IsNullOrEmpty(isSale) && isSale == "false")
                         {
-                            log.LogInformation(query1);
-                            connection1.Open();
-                            var command1 = new SqlCommand(query1, connection1);
-                            var reader1 = await command1.ExecuteReaderAsync();
-                            while (reader1.Read())
+                            var query1 = $"Select CONVERT(varchar,transactiondate,103) parastDate,ArParast from Transactions where invType = 3 and serial = '{tempSerial}'";
+                            using (SqlConnection connection1 = new SqlConnection(Environment.GetEnvironmentVariable("SqlConnectionString")))
                             {
-                                string date = reader1["parastDate"].ToString();
-                                string arParast = reader1["ArParast"].ToString();
-                                result += $" {date}, {arParast}";
+                                log.LogInformation(query1);
+                                connection1.Open();
+                                var command1 = new SqlCommand(query1, connection1);
+                                var reader1 = await command1.ExecuteReaderAsync();
+                                while (reader1.Read())
+                                {
+                                    string date = reader1["parastDate"].ToString();
+                                    string arParast = reader1["ArParast"].ToString();
+                                    result += $" {date}, {arParast}";
+                                }
+                                connection1.Close();
                             }
-                            connection1.Close();
-                        }
 
-                        serialExist serialExist = new serialExist();
-                        serialExist.serial = tempSerial;
-                        serialExist.Description = result.Trim();
-                        serials1.Add(serialExist);
+
+                            serialExist serialExist = new serialExist();
+                            serialExist.serial = tempSerial;
+                            serialExist.Description = result.Trim();
+                            serials1.Add(serialExist);
+                        }
                     }
                     connection.Close();
                 }
@@ -169,7 +180,7 @@ namespace a2L.FunctionToKinito
 
         [FunctionName("People")]
         public static async Task<IActionResult> People(
-           [HttpTrigger(AuthorizationLevel.Function, "get", Route = "people/{id?}")] HttpRequest req,
+           [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "people/{id?}")] HttpRequest req,
            ILogger log, int? id)
         {
             log.LogInformation("C# HTTP trigger function processed a request. Get People");
@@ -262,7 +273,7 @@ namespace a2L.FunctionToKinito
 
         [FunctionName("Product")]
         public static async Task<IActionResult> Product(
-         [HttpTrigger(AuthorizationLevel.Function, "get", Route = "product/{id?}")] HttpRequest req,
+         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "product/{id?}")] HttpRequest req,
          ILogger log, int? id)
         {
             log.LogInformation("C# HTTP trigger function processed a request. Get Product");
@@ -403,6 +414,60 @@ namespace a2L.FunctionToKinito
                 return new BadRequestResult();
             }
             return new OkObjectResult(insertedTransactions);
+        }
+
+        [FunctionName("GetAllSales")]
+        public static async Task<IActionResult> GetAllSales(
+           [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "getallsales")] HttpRequest req,
+           ILogger log)
+        {
+            log.LogInformation("C# HTTP trigger function processed a request. Get GetAllSales");
+            string productID = req.Query["productid"];
+            log.LogInformation($"username = {productID ?? "null"}");
+
+            List<getallorders> orders = new List<getallorders>();
+
+
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(Environment.GetEnvironmentVariable("SqlConnectionString")))
+                {
+                    connection.Open();
+                    var query = $"select PER.serial,(CASE WHEN CONVERT(DATE, PER.transactiondate) = '1900-01-01 00:00:00.000' THEN '' ELSE CONVERT(CHAR(10), PER.transactiondate, 103) END) AS [purchaseDate],"+
+                                $"[PER].arParast,PER.name,(CASE WHEN CONVERT(DATE, sell.transactionDate) = '1900-01-01' THEN '' ELSE CONVERT(CHAR(10), sell.transactionDate, 103) END) AS [SaleDate], "+
+                                $"ISNULL([sell].arParast,'') [arPar],ISNULL(sell.name,'') [Customer] "+
+                                $"from ("+
+                                $"    select transactiondate ,arParast ,name ,serial   "+
+                                $"    from transactions left join people on people.id = personid where invType = 3 and productID = {productID} ) as PER "+
+                                $"       Left join ("+
+                                $"       select transactiondate ,arParast ,name,serial"+
+                                $"       from transactions left join people on people.id = personid where invType = 2 and productID = {productID}) as sell on sell.serial = PER.serial "+
+                                $" order by purchaseDate DESC";
+                    log.LogInformation($"Query ==> {query} <==");
+                    SqlCommand command = new SqlCommand(query, connection);
+                    var reader = await command.ExecuteReaderAsync();
+                    while (reader.Read())
+                    {
+                        getallorders user = new getallorders();
+                        user.serial = reader["serial"].ToString();
+                        user.purchaseDate = reader["purchaseDate"].ToString();
+                        user.arParast = reader["arParast"].ToString();
+                        user.name = reader["name"].ToString();
+                        user.SaleDate = reader["SaleDate"].ToString();
+                        user.arPar = reader["arPar"].ToString();
+                        user.Customer = reader["Customer"].ToString();
+
+                        orders.Add(user);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                log.LogError(e.ToString());
+            }
+
+            return new OkObjectResult(orders);
+
         }
     }
 }
