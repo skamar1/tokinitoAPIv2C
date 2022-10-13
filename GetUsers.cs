@@ -117,19 +117,53 @@ namespace a2L.FunctionToKinito
         {
             log.LogInformation("C# HTTP trigger function processed a request. Serial Exist?");
             string isSale = req.Query["issale"];
+            int isSaleBit = 3;
             log.LogInformation($"isSale = {isSale ?? "false"}");
+            if (isSale == "true")
+            {
+                isSaleBit = 2;
+            }
+
+            string whereQuery = $"";
+
+            string productID = req.Query["productid"];
+            log.LogInformation($"Product ID = '{productID}'");
+            string searchAProduct = "";
+            if (!string.IsNullOrEmpty(productID))
+            {
+                searchAProduct = $"and productID = {productID} ";// Where DT.serial in (select serial from transactions where productid = 5) ";
+            }
 
             string serials = req.Query["serials"];
+            string serialQuery = null;
             log.LogInformation($"serials = {serials ?? "null"}");
+            if (!string.IsNullOrEmpty(serials))
+            {
+                if (string.IsNullOrEmpty(whereQuery))
+                {
+                    serialQuery = $" where DT.serial in ({serials}) ";
+                }
+                else
+                {
+                    serialQuery += $" and DT.serial in ({serials}) ";
+                }
+            }
+
+            string checkForDuplicates = ">";
+            if ((req.Query["showduplicates"].ToString() ?? "true") == "false")
+            {
+                checkForDuplicates = "=";
+            }
+            log.LogInformation($"checkForDuplicates = {req.Query["showduplicates"].ToString()}");
+
 
             List<serialExist> serials1 = new List<serialExist>();
 
-            if (string.IsNullOrEmpty(serials)) //αν δεν υπάρχουν σειριακά τότε επέστρεψε αδειο 
-            {
-                return new OkObjectResult(serials1);
-            }
-
-            var query = $"select src.serial from (values {serials}) as src(serial) WHERE EXISTS (select 1 from transactions where transactions.serial = src.serial)";
+            var query = $"select DT.serial,REPLACE(REPLACE(REPLACE(REPLACE(STUFF((select '; ',TR.arParast,CONVERT(varchar,TR.transactionDate,103) transactionDate from transactions TR where TR.serial = DT.serial FOR XML PATH('')),1,1,''),'<arParast>',''),'</arParast>',','),'<transactionDate>',''),'</transactionDate>','') [ArithParast] "+
+                        $"from ("+
+                        $"select serial from ("+
+                        $"SELECT  serial, COUNT (serial) AS [DUBL] "+
+                        $"FROM  transactions where invType = {isSaleBit} {searchAProduct} GROUP BY serial ) as a where DUBL {checkForDuplicates} 1) DT {serialQuery} GROUP BY serial order by 1";
             log.LogInformation($"query = '{query}'");
             try
             {
@@ -141,31 +175,12 @@ namespace a2L.FunctionToKinito
                     while (reader.Read())
                     {
                         string tempSerial = reader["serial"].ToString();
-                        string result = "";
-                        if (!string.IsNullOrEmpty(isSale) && isSale == "false")
-                        {
-                            var query1 = $"Select CONVERT(varchar,transactiondate,103) parastDate,ArParast from Transactions where invType = 3 and serial = '{tempSerial}'";
-                            using (SqlConnection connection1 = new SqlConnection(Environment.GetEnvironmentVariable("SqlConnectionString")))
-                            {
-                                log.LogInformation(query1);
-                                connection1.Open();
-                                var command1 = new SqlCommand(query1, connection1);
-                                var reader1 = await command1.ExecuteReaderAsync();
-                                while (reader1.Read())
-                                {
-                                    string date = reader1["parastDate"].ToString();
-                                    string arParast = reader1["ArParast"].ToString();
-                                    result += $" {date}, {arParast}";
-                                }
-                                connection1.Close();
-                            }
-
-
-                            serialExist serialExist = new serialExist();
-                            serialExist.serial = tempSerial;
-                            serialExist.Description = result.Trim();
-                            serials1.Add(serialExist);
-                        }
+                        string result = reader["ArithParast"].ToString();
+                        
+                        serialExist serialExist = new serialExist();
+                        serialExist.serial = tempSerial;
+                        serialExist.Description = result.Trim();
+                        serials1.Add(serialExist);
                     }
                     connection.Close();
                 }
@@ -446,6 +461,64 @@ namespace a2L.FunctionToKinito
                                 $"       Left join ("+
                                 $"       select transactiondate ,arParast ,name,serial"+
                                 $"       from transactions left join people on people.id = personid where invType = 2 and productID = {productID}) as sell on sell.serial = PER.serial "+
+                                $" order by purchaseDate DESC";
+                    log.LogInformation($"Query ==> {query} <==");
+                    SqlCommand command = new SqlCommand(query, connection);
+                    var reader = await command.ExecuteReaderAsync();
+                    while (reader.Read())
+                    {
+                        getallorders transactions = new getallorders();
+                        transactions.serial = reader["serial"].ToString();
+                        transactions.purchaseDate = reader["purchaseDate"].ToString();
+                        transactions.arParast = reader["arParast"].ToString();
+                        transactions.name = reader["name"].ToString();
+                        transactions.SaleDate = reader["SaleDate"].ToString();
+                        transactions.arPar = reader["arPar"].ToString();
+                        transactions.Customer = reader["Customer"].ToString();
+
+                        orders.Add(transactions);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                log.LogError(e.ToString());
+            }
+
+            return new OkObjectResult(orders);
+
+        }
+
+        [FunctionName("GetDoubleSerial")]
+        public static async Task<IActionResult> GetDoubleSerial(
+           [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "getdoubleserial")] HttpRequest req,
+           ILogger log)
+        {
+            log.LogInformation("C# HTTP trigger function processed a request. Get GetAllSales");
+            string productID = req.Query["productid"];
+            log.LogInformation($"productID = {productID ?? "null"}");
+
+            List<getallorders> orders = new List<getallorders>();
+
+            if (string.IsNullOrEmpty(productID))
+            {
+                return new OkObjectResult(orders);
+            }
+
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(Environment.GetEnvironmentVariable("SqlConnectionString")))
+                {
+                    connection.Open();
+                    var query = $"select PER.serial,(CASE WHEN CONVERT(DATE, PER.transactiondate) = '1900-01-01 00:00:00.000' THEN '' ELSE CONVERT(CHAR(10), PER.transactiondate, 103) END) AS [purchaseDate]," +
+                                $"[PER].arParast,PER.name,(CASE WHEN CONVERT(DATE, sell.transactionDate) = '1900-01-01' THEN '' ELSE CONVERT(CHAR(10), sell.transactionDate, 103) END) AS [SaleDate], " +
+                                $"ISNULL([sell].arParast,'') [arPar],ISNULL(sell.name,'') [Customer] " +
+                                $"from (" +
+                                $"    select transactiondate ,arParast ,name ,serial   " +
+                                $"    from transactions left join people on people.id = personid where invType = 3 and productID = {productID} ) as PER " +
+                                $"       Left join (" +
+                                $"       select transactiondate ,arParast ,name,serial" +
+                                $"       from transactions left join people on people.id = personid where invType = 2 and productID = {productID}) as sell on sell.serial = PER.serial " +
                                 $" order by purchaseDate DESC";
                     log.LogInformation($"Query ==> {query} <==");
                     SqlCommand command = new SqlCommand(query, connection);
