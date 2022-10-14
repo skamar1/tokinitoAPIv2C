@@ -439,12 +439,21 @@ namespace a2L.FunctionToKinito
             log.LogInformation("C# HTTP trigger function processed a request. Get GetAllSales");
             string productID = req.Query["productid"];
             log.LogInformation($"productID = {productID ?? "null"}");
+            string serial = req.Query["serial"];
+            log.LogInformation($"Serial = {serial}");
 
             List<getallorders> orders = new List<getallorders>();
 
+            string productSearch = $" and productID = {productID} ";
+            string serialSerch = $" and serial = '{serial}'";
+
             if (string.IsNullOrEmpty(productID))
             {
-                return new OkObjectResult(orders);
+                productSearch = "";
+            }
+            if (string.IsNullOrEmpty(serial))
+            {
+                serialSerch = "";
             }
 
             try
@@ -457,10 +466,10 @@ namespace a2L.FunctionToKinito
                                 $"ISNULL([sell].arParast,'') [arPar],ISNULL(sell.name,'') [Customer] "+
                                 $"from ("+
                                 $"    select transactiondate ,arParast ,name ,serial   "+
-                                $"    from transactions left join people on people.id = personid where invType = 3 and productID = {productID} ) as PER "+
+                                $"    from transactions left join people on people.id = personid where invType = 3{productSearch}{serialSerch}) as PER "+
                                 $"       Left join ("+
                                 $"       select transactiondate ,arParast ,name,serial"+
-                                $"       from transactions left join people on people.id = personid where invType = 2 and productID = {productID}) as sell on sell.serial = PER.serial "+
+                                $"       from transactions left join people on people.id = personid where invType = 2{productSearch}{serialSerch}) as sell on sell.serial = PER.serial " +
                                 $" order by purchaseDate DESC";
                     log.LogInformation($"Query ==> {query} <==");
                     SqlCommand command = new SqlCommand(query, connection);
